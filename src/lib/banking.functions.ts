@@ -28,8 +28,6 @@ type TransactionApi = {
   bank_transaction_code?: { description?: string };
 };
 
-const requireOwner = async (userId: string, supabase: Parameters<Parameters<typeof requireSupabaseAuth.options.server>[0]>[0] extends never ? never : never) => supabase;
-
 async function ensureOwner(userId: string, supabase: any) {
   const { data: owner, error } = await supabase.from("app_owner").select("user_id").maybeSingle();
   if (error) throw new Error("Impossible de vérifier l’accès privé.");
