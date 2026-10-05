@@ -28,7 +28,7 @@ import { useState, type ReactNode } from "react";
 import { AppButton } from "@/components/AppButton";
 import { BankCard } from "@/components/BankCard";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
     meta: [
       { title: "Mon Compte — Solde et opérations" },
