@@ -8,3 +8,5 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+- Keep all banking screens in the single mobile shell and reuse `BankCard` everywhere, because one future PNG replacement must update every card appearance.

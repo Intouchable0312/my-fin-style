@@ -19,6 +19,7 @@
  */
 
 @theme inline {
+  --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -62,26 +63,26 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
+  --radius: 0.5rem;
+  --background: oklch(0.968 0.002 240);
+  --foreground: oklch(0.09 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.129 0.042 264.695);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
+  --primary: oklch(0.57 0.17 244);
+  --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.968 0.007 247.896);
   --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
+  --muted: oklch(0.95 0.003 240);
+  --muted-foreground: oklch(0.55 0 0);
   --accent: oklch(0.968 0.007 247.896);
   --accent-foreground: oklch(0.208 0.042 265.755);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
+  --border: oklch(0.86 0 0);
+  --input: oklch(0.86 0 0);
+  --ring: oklch(0.57 0.17 244);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -140,5 +141,94 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: var(--font-sans);
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
   }
+
+  button {
+    font: inherit;
+  }
+}
+
+.bank-card {
+  position: relative;
+  aspect-ratio: 1.586;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid oklch(0.52 0.07 79);
+  border-radius: 10px;
+  background: linear-gradient(135deg, oklch(0.82 0.11 86), oklch(0.67 0.11 76));
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, white 22%, transparent);
+  color: oklch(0.16 0.02 75);
+  padding: 12px 14px;
+}
+
+.bank-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.18;
+  background-image: repeating-linear-gradient(115deg, transparent 0 8px, currentColor 9px, transparent 10px);
+  pointer-events: none;
+}
+
+.bank-card-topline,
+.bank-card-bottomline {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.bank-card-chip {
+  position: relative;
+  z-index: 1;
+  margin-top: 22px;
+  width: 38px;
+  height: 28px;
+  border: 1px solid color-mix(in oklab, currentColor 35%, transparent);
+  border-radius: 5px;
+  background: oklch(0.8 0.03 100);
+}
+
+.bank-card-number {
+  position: relative;
+  z-index: 1;
+  margin-top: 12px;
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.bank-card-bottomline {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+  left: 14px;
+}
+
+.bank-card-compact {
+  width: 72px;
+  border-radius: 3px;
+  padding: 5px 6px;
+}
+
+.bank-card-compact .bank-card-topline,
+.bank-card-compact .bank-card-bottomline {
+  font-size: 5px;
+}
+
+.bank-card-compact .bank-card-chip {
+  margin-top: 5px;
+  width: 13px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.bank-card-compact .bank-card-bottomline {
+  right: 5px;
+  bottom: 4px;
+  left: 5px;
 }
