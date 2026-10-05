@@ -1,40 +1,41 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import {
-  Bell,
-  ChevronDown,
+  Building2,
   ChevronLeft,
   ChevronRight,
-  CircleHelp,
-  CreditCard,
-  Gift,
   Home,
-  Info,
-  LocateFixed,
-  LockKeyhole,
-  MapPin,
-  MessageSquare,
-  Plus,
+  Landmark,
+  LogOut,
+  PieChart,
   ReceiptText,
+  RefreshCw,
   Search,
-  ShieldCheck,
-  Sparkles,
+  Unplug,
   UserRound,
-  UserRoundPlus,
   WalletCards,
-  Zap,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { AppButton } from "@/components/AppButton";
 import { BankCard } from "@/components/BankCard";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  disconnectBank,
+  getBankingOverview,
+  listFrenchBanks,
+  selectBankAccount,
+  startBankAuthorization,
+} from "@/lib/banking.functions";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
     meta: [
       { title: "Mon Compte — Solde et opérations" },
-      { name: "description", content: "Consultez votre solde, vos relevés, vos offres et les réglages de votre compte." },
+      { name: "description", content: "Votre solde et vos opérations bancaires réelles, connectés via Enable Banking." },
       { property: "og:title", content: "Mon Compte — Solde et opérations" },
-      { property: "og:description", content: "Consultez votre solde, vos relevés, vos offres et les réglages de votre compte." },
+      { property: "og:description", content: "Votre solde et vos opérations bancaires réelles, connectés via Enable Banking." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -42,45 +43,80 @@ export const Route = createFileRoute("/_authenticated/")({
   component: BankingApp,
 });
 
-type Tab = "home" | "statements" | "offers" | "account";
-type Detail = "transaction" | "notifications" | "pin" | "freeze" | "capacity" | null;
+type Overview = Awaited<ReturnType<typeof getBankingOverview>>;
+type Tx = Overview["transactions"][number];
+type Tab = "home" | "statements" | "spending" | "account";
+type Detail = { kind: "transaction"; tx: Tx } | { kind: "banks" } | { kind: "search" } | null;
 
 const tabItems: Array<{ id: Tab; label: string; icon: typeof Home }> = [
   { id: "home", label: "Accueil", icon: Home },
   { id: "statements", label: "Relevés", icon: ReceiptText },
-  { id: "offers", label: "Offres", icon: Gift },
+  { id: "spending", label: "Dépenses", icon: PieChart },
   { id: "account", label: "Compte", icon: UserRound },
 ];
+
+const money = (amount: number, currency = "EUR") =>
+  `${amount.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+const txAmount = (tx: Tx) => {
+  const raw = Number(tx.transaction_amount?.amount ?? 0);
+  const debit = (tx as { credit_debit_indicator?: string }).credit_debit_indicator === "DBIT";
+  return debit ? -Math.abs(raw) : raw;
+};
+const txDate = (tx: Tx) => tx.booking_date ?? tx.value_date ?? "";
+const txLabel = (tx: Tx) => {
+  const info = Array.isArray(tx.remittance_information) ? tx.remittance_information.join(" ") : tx.remittance_information;
+  const creditor = (tx as { creditor?: { name?: string } }).creditor?.name ?? tx.creditor_name;
+  const debtor = (tx as { debtor?: { name?: string } }).debtor?.name ?? tx.debtor_name;
+  return (txAmount(tx) < 0 ? creditor : debtor) || info || tx.bank_transaction_code?.description || "Opération";
+};
+const dayLabel = (d: string) => (d ? new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) : "Date inconnue");
+const longDate = (d: string) => (d ? new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) : "—");
+
+function pickBalance(o: Overview) {
+  const order = ["ITAV", "CLAV", "ITBD", "CLBD", "XPCD", "OTHR"];
+  const sorted = [...o.balances].sort((a, b) => order.indexOf(a.balance_type ?? "OTHR") - order.indexOf(b.balance_type ?? "OTHR"));
+  const b = sorted[0];
+  return b?.balance_amount?.amount ? { amount: Number(b.balance_amount.amount), currency: b.balance_amount.currency ?? "EUR" } : null;
+}
 
 function BankingApp() {
   const [tab, setTab] = useState<Tab>("home");
   const [detail, setDetail] = useState<Detail>(null);
-  const [frozen, setFrozen] = useState(true);
-  const [amount, setAmount] = useState("150000");
+  const fetchOverview = useServerFn(getBankingOverview);
+  const overview = useQuery({ queryKey: ["banking"], queryFn: () => fetchOverview(), retry: false });
+  const status = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("bank") : null;
 
   const goTab = (next: Tab) => {
     setTab(next);
     setDetail(null);
   };
 
+  let content: ReactNode;
+  if (overview.isLoading) content = <CenteredNote>Chargement de vos données bancaires…</CenteredNote>;
+  else if (overview.error) content = <CenteredNote action={<AppButton onClick={() => overview.refetch()} className="mt-4 font-semibold text-primary">Réessayer</AppButton>}>{overview.error.message}</CenteredNote>;
+  else if (!overview.data?.connection) content = <ConnectScreen status={status} onChoose={() => setDetail({ kind: "banks" })} />;
+  else {
+    const data = overview.data;
+    content = (
+      <>
+        {tab === "home" && <HomeScreen data={data} onTx={(tx) => setDetail({ kind: "transaction", tx })} />}
+        {tab === "statements" && <StatementsScreen data={data} onSearch={() => setDetail({ kind: "search" })} />}
+        {tab === "spending" && <SpendingScreen data={data} />}
+        {tab === "account" && <AccountScreen data={data} onReconnect={() => setDetail({ kind: "banks" })} />}
+      </>
+    );
+  }
+
   return (
     <main className="min-h-[100dvh] bg-background md:py-8">
       <section className="relative mx-auto min-h-[100dvh] w-full max-w-[430px] overflow-hidden bg-background md:min-h-[860px] md:shadow-2xl">
-        {detail === "transaction" && <TransactionDetail onBack={() => setDetail(null)} />}
-        {detail === "notifications" && <Notifications onBack={() => setDetail(null)} />}
-        {detail === "pin" && <PinScreen onBack={() => setDetail(null)} />}
-        {detail === "freeze" && <FreezeScreen frozen={frozen} setFrozen={setFrozen} onBack={() => setDetail(null)} />}
-        {detail === "capacity" && <CapacityScreen amount={amount} setAmount={setAmount} onBack={() => setDetail(null)} />}
-
+        {detail?.kind === "transaction" && overview.data && <TransactionDetail tx={detail.tx} data={overview.data} onBack={() => setDetail(null)} />}
+        {detail?.kind === "banks" && <BankPicker onBack={() => setDetail(null)} />}
+        {detail?.kind === "search" && overview.data && <SearchScreen data={overview.data} onBack={() => setDetail(null)} onTx={(tx) => setDetail({ kind: "transaction", tx })} />}
         {!detail && (
           <>
-            <div className="h-[calc(100dvh-78px)] min-h-[690px] overflow-y-auto pb-5 md:h-[782px]">
-              {tab === "home" && <HomeScreen onTransaction={() => setDetail("transaction")} onMessages={() => setDetail("notifications")} />}
-              {tab === "statements" && <StatementsScreen onCapacity={() => setDetail("capacity")} />}
-              {tab === "offers" && <OffersScreen onMessages={() => setDetail("notifications")} />}
-              {tab === "account" && <AccountScreen onMessages={() => setDetail("notifications")} onPin={() => setDetail("pin")} onFreeze={() => setDetail("freeze")} />}
-            </div>
-            <BottomNav active={tab} onChange={goTab} />
+            <div className="h-[calc(100dvh-78px)] min-h-[690px] overflow-y-auto pb-5 md:h-[782px]">{content}</div>
+            {overview.data?.connection && <BottomNav active={tab} onChange={goTab} />}
           </>
         )}
       </section>
@@ -88,100 +124,182 @@ function BankingApp() {
   );
 }
 
-function PageHeader({ title, subtitle, onMessages }: { title?: string; subtitle?: string; onMessages?: () => void }) {
+function CenteredNote({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return <div className="flex min-h-[600px] flex-col items-center justify-center bg-muted px-8 text-center text-[18px] text-muted-foreground"><p>{children}</p>{action}</div>;
+}
+
+function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <header className="relative flex h-[90px] items-end justify-center border-b border-border bg-card px-5 pb-3">
       <div className="text-center">
-        {title && <h1 className="text-[22px] leading-6 font-normal">{title}</h1>}
+        <h1 className="text-[22px] leading-6 font-normal">{title}</h1>
         {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
       </div>
-      {onMessages && (
-        <AppButton aria-label="Notifications" onClick={onMessages} className="absolute right-5 bottom-3 text-primary">
-          <MessageSquare size={29} strokeWidth={1.8} />
-        </AppButton>
-      )}
     </header>
   );
 }
 
-function HomeScreen({ onTransaction, onMessages }: { onTransaction: () => void; onMessages: () => void }) {
+function accountSubtitle(data: Overview) {
+  const a = data.activeAccount;
+  if (!a) return data.connection?.aspsp_name;
+  return a.iban_last4 ? `Compte se terminant par - ${a.iban_last4}` : a.name ?? data.connection?.aspsp_name;
+}
+
+function ConnectScreen({ status, onChoose }: { status: string | null; onChoose: () => void }) {
+  const messages: Record<string, string> = {
+    cancelled: "L’autorisation a été annulée.",
+    invalid: "Le lien d’autorisation a expiré. Recommencez.",
+    error: "La banque n’a pas pu être connectée. Recommencez.",
+  };
   return (
-    <div className="min-h-full bg-muted px-5 pb-8 pt-5">
-      <div className="flex justify-end">
-        <AppButton aria-label="Notifications" onClick={onMessages} className="text-primary"><MessageSquare size={29} strokeWidth={1.8} /></AppButton>
-      </div>
-      <div className="mx-auto -mt-1 w-[64%]"><BankCard /></div>
+    <div className="min-h-full bg-muted px-5 pb-8 pt-12">
+      <div className="mx-auto w-[64%]"><BankCard /></div>
       <section className="relative z-10 -mt-10 rounded-lg bg-card p-5 shadow-sm">
-        <p className="text-[20px] text-muted-foreground">Solde actuel</p>
-        <p className="mt-1 text-[36px] leading-none font-semibold">1 006,56 EUR</p>
-        <div className="mt-4 flex justify-between text-[19px]"><span className="text-muted-foreground">Montant à payer</span><span>0,00 EUR</span></div>
-        <div className="mt-2 flex justify-between text-[18px]"><span>Points fidélité</span><span>29 006</span></div>
-        <AppButton onClick={onTransaction} className="mt-5 flex w-full items-center border-t border-border pt-4 text-left text-[20px]">
-          <ReceiptText className="mr-4 text-primary" size={28} /><span className="flex-1">Opérations</span><ChevronRight className="text-border" />
+        <p className="text-[20px] text-muted-foreground">Aucune banque connectée</p>
+        <p className="mt-2 text-[17px] leading-6">Connectez votre banque pour afficher votre solde et vos opérations réelles.</p>
+        {status && messages[status] && <p className="mt-3 text-[16px] text-destructive">{messages[status]}</p>}
+        <AppButton onClick={onChoose} className="mt-5 flex w-full items-center border-t border-border pt-4 text-left text-[20px]">
+          <Landmark className="mr-4 text-primary" size={28} /><span className="flex-1">Connecter ma banque</span><ChevronRight className="text-border" />
         </AppButton>
       </section>
-      <TransactionGroup date="7 avr." onOpen={onTransaction} items={["RESTAURANT", "50,00 EUR"]} />
-      <TransactionGroup date="6 avr." onOpen={onTransaction} items={["SUPERMARCHÉ", "86,42 EUR"]} />
-      <TransactionGroup date="3 avr." onOpen={onTransaction} items={["PRÉLÈVEMENT", "124,90 EUR"]} />
     </div>
   );
 }
 
-function TransactionGroup({ date, items, onOpen }: { date: string; items: [string, string]; onOpen: () => void }) {
-  return <section className="mt-7"><h2 className="mb-3 text-[23px] font-semibold">{date}</h2><AppButton onClick={onOpen} className="flex h-[76px] w-full items-center justify-between rounded-lg bg-card px-5 text-[18px]"><span>{items[0]}</span><span>{items[1]}</span></AppButton></section>;
+function HomeScreen({ data, onTx }: { data: Overview; onTx: (tx: Tx) => void }) {
+  const balance = pickBalance(data);
+  const groups = useMemo(() => {
+    const map = new Map<string, Tx[]>();
+    [...data.transactions].sort((a, b) => txDate(b).localeCompare(txDate(a))).forEach((tx) => {
+      const k = txDate(tx);
+      map.set(k, [...(map.get(k) ?? []), tx]);
+    });
+    return [...map.entries()];
+  }, [data.transactions]);
+  return (
+    <div className="min-h-full bg-muted px-5 pb-8 pt-12">
+      <div className="mx-auto w-[64%]"><BankCard /></div>
+      <section className="relative z-10 -mt-10 rounded-lg bg-card p-5 shadow-sm">
+        <p className="text-[20px] text-muted-foreground">Solde actuel</p>
+        <p className="mt-1 text-[36px] leading-none font-semibold">{balance ? money(balance.amount, balance.currency) : "Indisponible"}</p>
+        <div className="mt-4 flex justify-between text-[18px]"><span className="text-muted-foreground">Banque</span><span>{data.connection?.aspsp_name}</span></div>
+      </section>
+      {groups.length === 0 && <p className="mt-8 text-center text-[18px] text-muted-foreground">Aucune opération transmise par votre banque.</p>}
+      {groups.map(([date, txs]) => (
+        <section key={date} className="mt-7">
+          <h2 className="mb-3 text-[23px] font-semibold">{dayLabel(date)}</h2>
+          <div className="overflow-hidden rounded-lg bg-card">
+            {txs.map((tx, i) => <TxRow key={i} tx={tx} onOpen={() => onTx(tx)} />)}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
 }
 
-function StatementsScreen({ onCapacity }: { onCapacity: () => void }) {
+function TxRow({ tx, onOpen }: { tx: Tx; onOpen: () => void }) {
+  const amt = txAmount(tx);
+  return (
+    <AppButton onClick={onOpen} className="flex min-h-[76px] w-full items-center justify-between gap-3 border-b border-border px-5 text-left text-[18px] last:border-b-0">
+      <span className="min-w-0 flex-1 truncate uppercase">{txLabel(tx)}</span>
+      <span className={amt > 0 ? "text-primary" : ""}>{money(amt, tx.transaction_amount?.currency)}</span>
+    </AppButton>
+  );
+}
+
+function StatementsScreen({ data, onSearch }: { data: Overview; onSearch: () => void }) {
+  const balance = pickBalance(data);
+  const dates = data.transactions.map(txDate).filter(Boolean).sort();
+  const total = data.transactions.reduce((s, tx) => s + txAmount(tx), 0);
   return (
     <div className="min-h-full bg-muted">
-      <PageHeader title="Relevés" />
+      <PageHeader title="Relevés" subtitle={accountSubtitle(data)} />
       <div className="px-5 pt-5">
         <section className="rounded-lg bg-card p-5">
-          <div className="flex items-center gap-2 text-[20px] text-muted-foreground">Solde <Info size={21} className="text-primary" /></div>
-          <div className="mt-1 flex items-center justify-between"><strong className="text-[36px] leading-none">1 006,56 EUR</strong><ChevronDown className="text-primary" /></div>
+          <p className="text-[20px] text-muted-foreground">Solde</p>
+          <strong className="mt-1 block text-[36px] leading-none">{balance ? money(balance.amount, balance.currency) : "Indisponible"}</strong>
         </section>
-        <div className="mt-7 flex items-center justify-between"><h2 className="text-[24px] font-semibold">Relevés récents</h2><span className="text-[20px] font-semibold text-primary">Tout voir</span></div>
+        <h2 className="mt-7 text-[24px] font-semibold">Période transmise</h2>
         <section className="mt-4 rounded-[18px] bg-card p-6 shadow-md">
-          <div className="flex items-start justify-between"><strong className="text-[21px]">janv. 23 - Aujourd'hui</strong><span className="rounded-md bg-muted px-3 py-2 text-[18px]">Actuel</span></div>
-          <p className="mt-7 text-[20px] text-muted-foreground">Transactions récentes</p>
-          <strong className="mt-1 block text-[36px] leading-none">1 006,56 EUR</strong>
-          <p className="mt-2 text-[21px]">26 Transactions</p>
-          <p className="mt-20 text-[18px] text-muted-foreground">Arrêté des comptes le 20 févr. <strong className="text-foreground">(0 jours)</strong></p>
+          <strong className="text-[21px]">{dates.length ? `${dayLabel(dates[0])} - ${dayLabel(dates[dates.length - 1])}` : "Aucune opération"}</strong>
+          <p className="mt-7 text-[20px] text-muted-foreground">Solde net des opérations</p>
+          <strong className="mt-1 block text-[36px] leading-none">{money(total, data.activeAccount?.currency ?? "EUR")}</strong>
+          <p className="mt-2 text-[21px]">{data.transactions.length} Transactions</p>
         </section>
-        <div className="my-4 flex justify-center gap-3"><i className="h-2.5 w-2.5 rounded-full bg-border" /><i className="h-2.5 w-2.5 rounded-full bg-border" /><i className="h-2.5 w-2.5 rounded-full bg-primary" /></div>
-        <div className="grid grid-cols-2 gap-6 py-5 text-center text-primary">
-          <AppButton onClick={onCapacity} className="font-semibold"><span className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-card"><Zap size={34} /></span>Capacité de dépenses</AppButton>
-          <AppButton className="font-semibold"><span className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-card"><Search size={34} /></span>Rechercher vos transactions</AppButton>
+        {data.balances.length > 0 && (
+          <section className="mt-6 overflow-hidden rounded-lg bg-card">
+            {data.balances.map((b, i) => (
+              <div key={i} className="flex justify-between border-b border-border px-5 py-4 text-[17px] last:border-b-0">
+                <span className="text-muted-foreground">{b.balance_type ?? "Solde"}{b.reference_date ? ` · ${dayLabel(b.reference_date)}` : ""}</span>
+                <span>{money(Number(b.balance_amount?.amount ?? 0), b.balance_amount?.currency)}</span>
+              </div>
+            ))}
+          </section>
+        )}
+        <div className="py-8 text-center text-primary">
+          <AppButton onClick={onSearch} className="font-semibold"><span className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-card"><Search size={34} /></span>Rechercher vos transactions</AppButton>
         </div>
       </div>
     </div>
   );
 }
 
-function OffersScreen({ onMessages }: { onMessages: () => void }) {
+function SpendingScreen({ data }: { data: Overview }) {
+  const months = useMemo(() => {
+    const map = new Map<string, { out: number; in: number }>();
+    data.transactions.forEach((tx) => {
+      const k = txDate(tx).slice(0, 7);
+      if (!k) return;
+      const v = map.get(k) ?? { out: 0, in: 0 };
+      const a = txAmount(tx);
+      if (a < 0) v.out += -a; else v.in += a;
+      map.set(k, v);
+    });
+    return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [data.transactions]);
+  const max = Math.max(1, ...months.map(([, v]) => v.out));
+  const cur = data.activeAccount?.currency ?? "EUR";
   return (
     <div className="min-h-full bg-card">
-      <PageHeader title="Offres" subtitle="Carte se terminant par - 21001" onMessages={onMessages} />
-      <section className="bg-muted px-6 py-5 text-center">
-        <LocateFixed className="mx-auto" size={42} strokeWidth={1.6} />
-        <h2 className="mt-4 text-[23px]">Vos offres du moment</h2><p className="text-[18px] text-muted-foreground">Découvrez, inscrivez-vous et profitez</p>
-        <p className="mt-4 flex items-start justify-center gap-2 text-[16px] leading-5 text-muted-foreground"><Info size={20} className="shrink-0" />Merci de lire les Conditions Générales avant de vous inscrire à une offre.</p>
-      </section>
-      <MenuRow icon={<WalletCards />} label="Mes offres" right="6 Enregistrée(s)" />
-      <SectionLabel>Offres</SectionLabel>
-      <MenuRow icon={<MapPin />} label="Offres à proximité" />
-      <Offer badge="500" unit="points" category="Hôtel" title="500 points fidélité supplémentaires" note="Valable en ligne · Exp: 31/12/35" />
-      <Offer badge="20€" unit="remboursés" category="Boutique" title="20 € remboursés tous les 85 € dépensés" note="Valable en magasin et en ligne" />
+      <PageHeader title="Dépenses" subtitle={accountSubtitle(data)} />
+      <SectionLabel>Par mois</SectionLabel>
+      {months.length === 0 && <p className="px-5 py-6 text-muted-foreground">Aucune opération transmise.</p>}
+      {months.map(([m, v]) => (
+        <div key={m} className="mx-5 border-b border-border py-5">
+          <div className="flex justify-between text-[19px]"><span className="capitalize">{new Date(`${m}-01`).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}</span><strong>{money(-v.out, cur)}</strong></div>
+          <div className="mt-3 h-2 rounded-full bg-muted"><div className="h-2 rounded-full bg-primary" style={{ width: `${(v.out / max) * 100}%` }} /></div>
+          <p className="mt-2 text-sm text-muted-foreground">Entrées : {money(v.in, cur)}</p>
+        </div>
+      ))}
     </div>
   );
 }
 
-function Offer({ badge, unit, category, title, note }: { badge: string; unit: string; category: string; title: string; note: string }) {
-  return <div className="mx-5 flex gap-4 border-t border-border py-5"><div className="flex h-[76px] w-[76px] shrink-0 flex-col items-center justify-center rounded-full border-2 border-primary text-primary"><strong className="text-[23px] leading-5">{badge}</strong><span className="text-xs">{unit}</span></div><div className="min-w-0 flex-1"><p className="text-muted-foreground">{category}</p><p className="text-[19px] leading-6">{title}</p><p className="mt-2 text-sm text-muted-foreground">{note}</p></div><AppButton aria-label="Ajouter l’offre" className="my-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-muted text-primary"><Plus /></AppButton></div>;
-}
-
-function AccountScreen({ onMessages, onPin, onFreeze }: { onMessages: () => void; onPin: () => void; onFreeze: () => void }) {
-  return <div className="min-h-full bg-card"><PageHeader title="Compte" subtitle="Carte se terminant par - 21001" onMessages={onMessages} /><SectionLabel>Votre compte</SectionLabel><MenuRow icon={<CreditCard />} label="Apple Pay" /><MenuRow icon={<CreditCard />} label="Activer et ajouter une carte" /><MenuRow icon={<UserRoundPlus />} label="Demander une Carte supplémentaire" /><MenuRow icon={<CreditCard />} label="Gérer votre code confidentiel" onClick={onPin} /><MenuRow icon={<LockKeyhole />} label="Bloquer temporairement une carte" onClick={onFreeze} /><MenuRow icon={<WalletCards />} label="Remplacer une Carte" /><SectionLabel>Vos réglages et préférences</SectionLabel><MenuRow icon={<UserRound />} label="Connexion via Face ID" /><MenuRow icon={<ShieldCheck />} label="Vérification en deux étapes" /><MenuRow icon={<Bell />} label="Notifications" onClick={onMessages} /></div>;
+function AccountScreen({ data, onReconnect }: { data: Overview; onReconnect: () => void }) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const select = useServerFn(selectBankAccount);
+  const disconnect = useServerFn(disconnectBank);
+  const [busy, setBusy] = useState(false);
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    try { await fn(); await qc.invalidateQueries({ queryKey: ["banking"] }); } finally { setBusy(false); }
+  };
+  return (
+    <div className="min-h-full bg-card">
+      <PageHeader title="Compte" subtitle={accountSubtitle(data)} />
+      <SectionLabel>Vos comptes</SectionLabel>
+      {data.accounts.map((a) => (
+        <MenuRow key={a.id} icon={<WalletCards />} label={a.name ?? a.product ?? "Compte"} right={a.id === data.activeAccount?.id ? "Affiché" : a.iban_last4 ? `•• ${a.iban_last4}` : undefined} onClick={() => !busy && run(() => select({ data: { accountId: a.id } }))} />
+      ))}
+      <SectionLabel>Votre banque</SectionLabel>
+      <MenuRow icon={<Building2 />} label={data.connection?.aspsp_name ?? "Banque"} right={data.connection?.valid_until ? `Jusqu’au ${new Date(data.connection.valid_until).toLocaleDateString("fr-FR")}` : undefined} onClick={onReconnect} />
+      <MenuRow icon={<RefreshCw />} label="Renouveler l’autorisation" onClick={onReconnect} />
+      <MenuRow icon={<Unplug />} label="Déconnecter la banque" onClick={() => !busy && confirm("Déconnecter votre banque ?") && run(() => disconnect())} />
+      <SectionLabel>Session</SectionLabel>
+      <MenuRow icon={<LogOut />} label="Se déconnecter" onClick={async () => { await supabase.auth.signOut(); qc.clear(); navigate({ to: "/auth" }); }} />
+    </div>
+  );
 }
 
 function SectionLabel({ children }: { children: ReactNode }) { return <h2 className="border-y border-border bg-muted px-5 py-3 text-[18px] font-semibold text-muted-foreground">{children}</h2>; }
@@ -191,27 +309,75 @@ function MenuRow({ icon, label, right, onClick }: { icon: ReactNode; label: stri
 }
 
 function BottomNav({ active, onChange }: { active: Tab; onChange: (tab: Tab) => void }) {
-  return <nav className="absolute inset-x-0 bottom-0 z-20 grid h-[78px] grid-cols-4 border-t border-border bg-card/95 pb-2 backdrop-blur"><span className="sr-only">Navigation principale</span>{tabItems.map(({ id, label, icon: Icon }) => <AppButton key={id} onClick={() => onChange(id)} className={`flex flex-col items-center justify-center gap-1 text-xs ${active === id ? "text-primary" : "text-muted-foreground"}`}><Icon size={27} strokeWidth={active === id ? 2.2 : 1.8} /><span>{label}</span></AppButton>)}</nav>;
+  return <nav className="absolute inset-x-0 bottom-0 z-20 grid h-[78px] grid-cols-4 border-t border-border bg-card/95 pb-2 backdrop-blur">{tabItems.map(({ id, label, icon: Icon }) => <AppButton key={id} onClick={() => onChange(id)} className={`flex flex-col items-center justify-center gap-1 text-xs ${active === id ? "text-primary" : "text-muted-foreground"}`}><Icon size={27} strokeWidth={active === id ? 2.2 : 1.8} /><span>{label}</span></AppButton>)}</nav>;
 }
 
-function DetailHeader({ title, subtitle, onBack, right }: { title: string; subtitle?: string; onBack: () => void; right?: ReactNode }) {
-  return <header className="relative flex h-[90px] items-end justify-center border-b border-border bg-card px-5 pb-3"><AppButton aria-label="Retour" onClick={onBack} className="absolute bottom-3 left-3 text-primary"><ChevronLeft size={34} /></AppButton><div className="max-w-[78%] text-center"><h1 className="text-[20px] leading-6">{title}</h1>{subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}</div>{right && <span className="absolute right-4 bottom-4 text-primary">{right}</span>}</header>;
+function DetailHeader({ title, subtitle, onBack }: { title: string; subtitle?: string; onBack: () => void }) {
+  return <header className="relative flex h-[90px] items-end justify-center border-b border-border bg-card px-5 pb-3"><AppButton aria-label="Retour" onClick={onBack} className="absolute bottom-3 left-3 text-primary"><ChevronLeft size={34} /></AppButton><div className="max-w-[78%] text-center"><h1 className="text-[20px] leading-6">{title}</h1>{subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}</div></header>;
 }
 
-function TransactionDetail({ onBack }: { onBack: () => void }) { return <div className="min-h-[100dvh] bg-card"><DetailHeader title="Détails de l'opération" subtitle="Carte se terminant par - 21001" onBack={onBack} /><section className="bg-muted px-5 py-6"><strong className="block text-[23px]">RESTAURANT</strong><strong className="block text-[39px] leading-none">50,00 EUR</strong><p className="mt-4 text-[18px]">7 avril 2023</p></section><section className="m-5 flex items-center gap-4 bg-card p-5 shadow-sm"><Sparkles className="shrink-0 text-primary" size={38} /><div><p className="text-[19px]">Utilisez 10 000 points et recevez un crédit de 50,00 EUR</p><p className="mt-2 text-muted-foreground">1 000 points = 5 euros</p><p className="mt-3 text-[18px] text-primary">Utiliser mes points</p></div></section><section className="px-5"><h2 className="text-[24px] font-semibold">Détails de l'opération</h2><p className="mt-4 text-[19px]">RESTAURANT</p><p className="mt-5 text-[18px]">12345<br />FRANCE</p><div className="mt-7 flex justify-between border-y border-border py-5 text-[18px]"><span className="text-muted-foreground">Date</span><span>7 avril 2023</span></div></section></div>; }
-
-function CardIdentity() { return <div className="flex items-center gap-3 border-b border-border bg-card px-5 py-5"><BankCard compact /><div><strong className="text-[17px]">CARTE FICTIVE</strong><p className="text-muted-foreground">Carte se terminant par - 21001</p></div></div>; }
-
-function Notifications({ onBack }: { onBack: () => void }) { return <div className="min-h-[100dvh] bg-muted"><DetailHeader title="Notifications" onBack={onBack} /><CardIdentity /><p className="px-5 py-4 text-sm leading-4 text-muted-foreground">Programmez des notifications vous informant de l'actualité de votre compte en temps-réel.</p><SectionLabel>Paiement et relevé</SectionLabel><SettingRow label="Paiement reçu" /><SettingRow label="Alerte prélèvement" /><SectionLabel>Dépenses</SectionLabel><SettingRow label="Alerte encours" /><SettingRow label="Alerte prélèvement" /><SectionLabel>Offres</SectionLabel><SettingRow label="Offres enregistrées" /><div className="absolute inset-x-0 bottom-12 px-10 text-center text-sm text-muted-foreground"><p>Pour désactiver toutes les notifications ci-dessus sur cet appareil</p><p className="mt-5 font-semibold text-primary">Aller dans les réglages</p></div></div>; }
-function SettingRow({ label }: { label: string }) { return <div className="flex h-16 items-center border-b border-border bg-card px-5 text-[17px]"><span className="flex-1">{label}</span><span>Activée</span><ChevronRight className="ml-2 text-border" size={20} /></div>; }
-
-function PinScreen({ onBack }: { onBack: () => void }) { return <div className="min-h-[100dvh] bg-muted"><DetailHeader title="Gérer votre code confidentiel" onBack={onBack} /><CardIdentity /><div className="flex gap-10 border-b border-border bg-card px-5 py-5 text-[18px] font-semibold text-primary"><span>Consulter le code</span><span>Modifier</span></div></div>; }
-
-function FreezeScreen({ frozen, setFrozen, onBack }: { frozen: boolean; setFrozen: (v: boolean) => void; onBack: () => void }) { return <div className="min-h-[100dvh] bg-muted"><DetailHeader title="Bloquer la carte" subtitle="Carte se terminant par - 21001" onBack={onBack} right="FAQ" /><div className="mx-auto w-[62%] py-12"><BankCard /></div><div className="flex items-center border-y border-border bg-card px-5 py-6"><span className="flex-1 text-[20px]">Bloquer temporairement la carte</span><AppButton role="switch" aria-checked={frozen} onClick={() => setFrozen(!frozen)} className={`relative h-9 w-16 rounded-full transition-colors ${frozen ? "bg-primary" : "bg-border"}`}><span className={`absolute top-1 h-7 w-7 rounded-full bg-card shadow transition-all ${frozen ? "left-8" : "left-1"}`} /></AppButton></div><div className="px-5 py-5 text-[17px] leading-6"><strong className="text-[19px]">Votre carte sera débloquée dans 7 jours.</strong><p className="mt-3">Votre carte est temporairement bloquée. Votre carte sera automatiquement débloquée 7 jours après le premier blocage et sera utilisable immédiatement après.</p><p className="mt-5">Pendant qu'elle est bloquée, votre carte ne peut plus être utilisée pour les transactions ou retraits. Les paiements automatisés ou préautorisés seront toujours traités.</p></div></div>; }
-
-function CapacityScreen({ amount, setAmount, onBack }: { amount: string; setAmount: (v: string) => void; onBack: () => void }) {
-  const formatted = `${(Number(amount || "0") / 100).toLocaleString("fr-FR", { minimumFractionDigits: 2 })} EUR`;
-  return <div className="flex min-h-[100dvh] flex-col bg-muted"><DetailHeader title="Vérifier votre capacité de dépenses" subtitle="Carte se terminant par - 21001" onBack={onBack} right={<CircleHelp size={22} />} /><div className="flex flex-1 flex-col items-center justify-center px-5 text-center"><p className="text-[26px] leading-10">Saisir le montant<br />de la dépense envisagée</p><p className="mt-7 text-[43px] font-light text-primary">{formatted}</p></div><Keypad amount={amount} setAmount={setAmount} /></div>;
+function TransactionDetail({ tx, data, onBack }: { tx: Tx; data: Overview; onBack: () => void }) {
+  const info = Array.isArray(tx.remittance_information) ? tx.remittance_information.join(" ") : tx.remittance_information;
+  const rows: Array<[string, string | undefined]> = [
+    ["Date d’opération", tx.booking_date && longDate(tx.booking_date)],
+    ["Date de valeur", tx.value_date && longDate(tx.value_date)],
+    ["Libellé", info],
+    ["Type", tx.bank_transaction_code?.description],
+    ["Statut", tx.status],
+  ];
+  return (
+    <div className="min-h-[100dvh] bg-card">
+      <DetailHeader title="Détails de l'opération" subtitle={accountSubtitle(data)} onBack={onBack} />
+      <section className="bg-muted px-5 py-6">
+        <strong className="block text-[23px] uppercase">{txLabel(tx)}</strong>
+        <strong className="block text-[39px] leading-none">{money(txAmount(tx), tx.transaction_amount?.currency)}</strong>
+        <p className="mt-4 text-[18px]">{longDate(txDate(tx))}</p>
+      </section>
+      <section className="px-5 pt-6">
+        <h2 className="text-[24px] font-semibold">Détails de l'opération</h2>
+        <div className="mt-4">
+          {rows.filter(([, v]) => v).map(([k, v]) => <div key={k} className="flex justify-between gap-6 border-b border-border py-5 text-[18px]"><span className="shrink-0 text-muted-foreground">{k}</span><span className="text-right">{v}</span></div>)}
+        </div>
+      </section>
+    </div>
+  );
 }
 
-function Keypad({ amount, setAmount }: { amount: string; setAmount: (v: string) => void }) { const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "+*#", "0", "⌫"]; return <div className="grid grid-cols-3 gap-1 bg-border p-1 pb-7">{keys.map((key) => <AppButton key={key} onClick={() => key === "⌫" ? setAmount(amount.slice(0, -1)) : /^\d$/.test(key) && setAmount((amount + key).slice(-8))} className={`h-14 text-[28px] ${key === "+*#" || key === "⌫" ? "bg-transparent" : "rounded-md bg-card shadow-sm"}`}>{key}</AppButton>)}</div>; }
+function SearchScreen({ data, onBack, onTx }: { data: Overview; onBack: () => void; onTx: (tx: Tx) => void }) {
+  const [q, setQ] = useState("");
+  const list = data.transactions.filter((tx) => `${txLabel(tx)} ${tx.transaction_amount?.amount ?? ""}`.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div className="min-h-[100dvh] bg-muted">
+      <DetailHeader title="Rechercher" subtitle={accountSubtitle(data)} onBack={onBack} />
+      <div className="p-5"><input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Libellé ou montant" className="h-12 w-full rounded-lg border border-border bg-card px-4 text-[17px] outline-none" /></div>
+      <div className="mx-5 overflow-hidden rounded-lg bg-card">{list.map((tx, i) => <TxRow key={i} tx={tx} onOpen={() => onTx(tx)} />)}</div>
+      {list.length === 0 && <p className="text-center text-muted-foreground">Aucun résultat.</p>}
+    </div>
+  );
+}
+
+function BankPicker({ onBack }: { onBack: () => void }) {
+  const fetchBanks = useServerFn(listFrenchBanks);
+  const start = useServerFn(startBankAuthorization);
+  const banks = useQuery({ queryKey: ["banks"], queryFn: () => fetchBanks(), retry: false });
+  const [q, setQ] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const choose = async (name: string, country: string) => {
+    setErr(null);
+    try {
+      const { url } = await start({ data: { name, country, redirectUrl: `${window.location.origin}/api/public/enable-banking-callback` } });
+      window.location.href = url;
+    } catch (e) { setErr(e instanceof Error ? e.message : "Erreur"); }
+  };
+  const list = (banks.data ?? []).filter((b) => b.name.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div className="min-h-[100dvh] bg-muted">
+      <DetailHeader title="Choisir votre banque" onBack={onBack} />
+      <div className="p-5"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher une banque" className="h-12 w-full rounded-lg border border-border bg-card px-4 text-[17px] outline-none" /></div>
+      {err && <p className="px-5 pb-3 text-destructive">{err}</p>}
+      {banks.isLoading && <p className="text-center text-muted-foreground">Chargement des banques…</p>}
+      {banks.error && <p className="px-5 text-center text-destructive">{banks.error.message}</p>}
+      <div className="bg-card">{list.map((b) => <MenuRow key={b.name} icon={b.logo ? <img src={b.logo} alt="" className="h-7 w-7 object-contain" /> : <Landmark />} label={b.name} onClick={() => choose(b.name, b.country)} />)}</div>
+    </div>
+  );
+}
