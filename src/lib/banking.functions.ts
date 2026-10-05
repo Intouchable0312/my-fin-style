@@ -76,8 +76,10 @@ export const listFrenchBanks = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await ensureOwner(context.userId, context.supabase);
-    const response = await enableBankingRequest<{ aspsps?: Aspsp[] }>(readEnableBankingCredentials(), "/aspsps?country=FR");
-    return (response.aspsps ?? []).filter((bank) => bank.psu_types?.includes("personal") !== false);
+    const response = await enableBankingRequest<{ aspsps?: Aspsp[] }>(readEnableBankingCredentials(), "/aspsps");
+    return (response.aspsps ?? [])
+      .filter((bank) => bank.psu_types?.includes("personal") !== false)
+      .sort((a, b) => (a.country === "FR" ? 0 : 1) - (b.country === "FR" ? 0 : 1) || a.name.localeCompare(b.name));
   });
 
 export const startBankAuthorization = createServerFn({ method: "POST" })
