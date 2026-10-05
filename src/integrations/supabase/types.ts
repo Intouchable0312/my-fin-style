@@ -14,7 +14,146 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      app_owner: {
+        Row: {
+          created_at: string
+          singleton: boolean
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          singleton?: boolean
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          singleton?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
+      bank_accounts: {
+        Row: {
+          account_type: string | null
+          connection_id: string
+          created_at: string
+          currency: string
+          external_uid: string
+          iban_last4: string | null
+          id: string
+          metadata: Json
+          name: string | null
+          product: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_type?: string | null
+          connection_id: string
+          created_at?: string
+          currency: string
+          external_uid: string
+          iban_last4?: string | null
+          id?: string
+          metadata?: Json
+          name?: string | null
+          product?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_type?: string | null
+          connection_id?: string
+          created_at?: string
+          currency?: string
+          external_uid?: string
+          iban_last4?: string | null
+          id?: string
+          metadata?: Json
+          name?: string | null
+          product?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_accounts_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "banking_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      banking_authorizations: {
+        Row: {
+          aspsp_country: string
+          aspsp_name: string
+          consumed_at: string | null
+          created_at: string
+          expires_at: string
+          state: string
+          user_id: string
+        }
+        Insert: {
+          aspsp_country: string
+          aspsp_name: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at: string
+          state: string
+          user_id: string
+        }
+        Update: {
+          aspsp_country?: string
+          aspsp_name?: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          state?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      banking_connections: {
+        Row: {
+          active_account_uid: string | null
+          aspsp_country: string
+          aspsp_name: string
+          created_at: string
+          id: string
+          session_id: string
+          status: string
+          updated_at: string
+          user_id: string
+          valid_until: string | null
+        }
+        Insert: {
+          active_account_uid?: string | null
+          aspsp_country: string
+          aspsp_name: string
+          created_at?: string
+          id?: string
+          session_id: string
+          status?: string
+          updated_at?: string
+          user_id: string
+          valid_until?: string | null
+        }
+        Update: {
+          active_account_uid?: string | null
+          aspsp_country?: string
+          aspsp_name?: string
+          created_at?: string
+          id?: string
+          session_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+          valid_until?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
