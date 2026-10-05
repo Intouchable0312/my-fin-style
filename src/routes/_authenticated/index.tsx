@@ -128,7 +128,7 @@ function CenteredNote({ children, action }: { children: ReactNode; action?: Reac
   return <div className="flex min-h-[600px] flex-col items-center justify-center bg-muted px-8 text-center text-[18px] text-muted-foreground"><p>{children}</p>{action}</div>;
 }
 
-function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+function PageHeader({ title, subtitle }: { title: string; subtitle?: string | undefined }) {
   return (
     <header className="relative flex h-[90px] items-end justify-center border-b border-border bg-card px-5 pb-3">
       <div className="text-center">
