@@ -221,7 +221,7 @@ function StatementsScreen({ data, onSearch }: { data: Overview; onSearch: () => 
         </section>
         <h2 className="mt-7 text-[24px] font-semibold">Période transmise</h2>
         <section className="mt-4 rounded-[18px] bg-card p-6 shadow-md">
-          <strong className="text-[21px]">{dates.length ? `${dayLabel(dates[0])} - ${dayLabel(dates[dates.length - 1])}` : "Aucune opération"}</strong>
+          <strong className="text-[21px]">{dates.length ? `${dayLabel(dates[0] ?? "")} - ${dayLabel(dates[dates.length - 1] ?? "")}` : "Aucune opération"}</strong>
           <p className="mt-7 text-[20px] text-muted-foreground">Solde net des opérations</p>
           <strong className="mt-1 block text-[36px] leading-none">{money(total, data.activeAccount?.currency ?? "EUR")}</strong>
           <p className="mt-2 text-[21px]">{data.transactions.length} Transactions</p>
@@ -304,7 +304,7 @@ function AccountScreen({ data, onReconnect }: { data: Overview; onReconnect: () 
 
 function SectionLabel({ children }: { children: ReactNode }) { return <h2 className="border-y border-border bg-muted px-5 py-3 text-[18px] font-semibold text-muted-foreground">{children}</h2>; }
 
-function MenuRow({ icon, label, right, onClick }: { icon: ReactNode; label: string; right?: string; onClick?: () => void }) {
+function MenuRow({ icon, label, right, onClick }: { icon: ReactNode; label: string; right?: string | undefined; onClick?: () => void }) {
   return <AppButton onClick={onClick} className="mx-5 flex min-h-[75px] w-[calc(100%-40px)] items-center gap-4 border-b border-border text-left"><span className="text-primary">{icon}</span><span className="flex-1 text-[19px] leading-6">{label}</span>{right && <span className="text-sm text-muted-foreground">{right}</span>}<ChevronRight size={22} className="text-border" /></AppButton>;
 }
 
@@ -312,7 +312,7 @@ function BottomNav({ active, onChange }: { active: Tab; onChange: (tab: Tab) => 
   return <nav className="absolute inset-x-0 bottom-0 z-20 grid h-[78px] grid-cols-4 border-t border-border bg-card/95 pb-2 backdrop-blur">{tabItems.map(({ id, label, icon: Icon }) => <AppButton key={id} onClick={() => onChange(id)} className={`flex flex-col items-center justify-center gap-1 text-xs ${active === id ? "text-primary" : "text-muted-foreground"}`}><Icon size={27} strokeWidth={active === id ? 2.2 : 1.8} /><span>{label}</span></AppButton>)}</nav>;
 }
 
-function DetailHeader({ title, subtitle, onBack }: { title: string; subtitle?: string; onBack: () => void }) {
+function DetailHeader({ title, subtitle, onBack }: { title: string; subtitle?: string | undefined; onBack: () => void }) {
   return <header className="relative flex h-[90px] items-end justify-center border-b border-border bg-card px-5 pb-3"><AppButton aria-label="Retour" onClick={onBack} className="absolute bottom-3 left-3 text-primary"><ChevronLeft size={34} /></AppButton><div className="max-w-[78%] text-center"><h1 className="text-[20px] leading-6">{title}</h1>{subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}</div></header>;
 }
 
