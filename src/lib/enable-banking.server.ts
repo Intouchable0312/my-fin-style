@@ -1,24 +1,33 @@
-import { importPKCS8, importSPKI, SignJWT } from "jose";
+import { createPrivateKey, createSign, randomUUID } from "node:crypto";
 
 const API_ORIGIN = "https://api.enablebanking.com";
 
 type Credentials = { applicationId: string; privateKey: string };
 
-async function createAuthorizationToken({ applicationId, privateKey }: Credentials) {
+function base64Url(input: string | Buffer) {
+  return Buffer.from(input).toString("base64url");
+}
+
+// Node's createPrivateKey accepts PKCS#1 ("RSA PRIVATE KEY"), PKCS#8
+// ("PRIVATE KEY") and SEC1 keys alike, so any PEM the user pastes works.
+function createAuthorizationToken({ applicationId, privateKey }: Credentials) {
   const normalizedKey = privateKey.replace(/\\n/g, "\n").trim();
-  const algorithm = "RS256";
-  const key = normalizedKey.includes("BEGIN PUBLIC KEY")
-    ? await importSPKI(normalizedKey, algorithm)
-    : await importPKCS8(normalizedKey, algorithm);
+  const key = createPrivateKey({ key: normalizedKey, format: "pem" });
   const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({})
-    .setProtectedHeader({ alg: algorithm, kid: applicationId, typ: "JWT" })
-    .setIssuedAt(now)
-    .setExpirationTime(now + 3600)
-    .setIssuer(applicationId)
-    .setAudience("api.enablebanking.com")
-    .setJti(crypto.randomUUID())
-    .sign(key);
+  const header = base64Url(JSON.stringify({ alg: "RS256", kid: applicationId, typ: "JWT" }));
+  const payload = base64Url(
+    JSON.stringify({
+      iss: applicationId,
+      aud: "api.enablebanking.com",
+      iat: now,
+      exp: now + 3600,
+      jti: randomUUID(),
+    }),
+  );
+  const signer = createSign("RSA-SHA256");
+  signer.update(`${header}.${payload}`);
+  const signature = signer.sign(key, "base64url");
+  return `${header}.${payload}.${signature}`;
 }
 
 export async function enableBankingRequest<T>(
