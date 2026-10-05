@@ -25,13 +25,13 @@ function toPkcs8Der(raw: string): Uint8Array {
     .replace(/-----BEGIN [A-Z ]+-----/g, "")
     .replace(/-----END [A-Z ]+-----/g, "")
     .replace(/[^A-Za-z0-9+/=]/g, "");
-  let der = new Uint8Array(Buffer.from(body, "base64"));
+  let der: Uint8Array<ArrayBuffer> = new Uint8Array(Buffer.from(body, "base64"));
   if (der.length < 100) throw new Error("La clé privée Enable Banking est invalide ou incomplète.");
   // Detect PKCS#1 even without header: SEQUENCE { INTEGER 0, INTEGER modulus... }
   // PKCS#8 has SEQUENCE { INTEGER 0, SEQUENCE { OID ... } } -> byte after version is 0x30.
   const looksPkcs1 = (() => {
     let i = 1;
-    const l = der[i];
+    const l = der[i] ?? 0;
     i += l & 0x80 ? 1 + (l & 0x7f) : 1;
     return der[i] === 0x02 && der[i + 2] === 0x00 && der[i + 3] === 0x02;
   })();
@@ -51,7 +51,7 @@ function toPkcs8Der(raw: string): Uint8Array {
 async function createAuthorizationToken({ applicationId, privateKey }: Credentials) {
   const key = await crypto.subtle.importKey(
     "pkcs8",
-    toPkcs8Der(privateKey),
+    toPkcs8Der(privateKey) as BufferSource,
     { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
     false,
     ["sign"],
