@@ -1,4 +1,4 @@
-import { createPrivateKey, createSign, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 const API_ORIGIN = "https://api.enablebanking.com";
 
