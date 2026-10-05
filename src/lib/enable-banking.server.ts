@@ -8,11 +8,54 @@ function base64Url(input: string | Buffer) {
   return Buffer.from(input).toString("base64url");
 }
 
-// Node's createPrivateKey accepts PKCS#1 ("RSA PRIVATE KEY"), PKCS#8
-// ("PRIVATE KEY") and SEC1 keys alike, so any PEM the user pastes works.
-function createAuthorizationToken({ applicationId, privateKey }: Credentials) {
-  const normalizedKey = privateKey.replace(/\\n/g, "\n").trim();
-  const key = createPrivateKey({ key: normalizedKey, format: "pem" });
+// Tolerant PEM reader: accepts PKCS#1 or PKCS#8, with lost line breaks,
+// literal "\n", quotes or a bare base64 body. PKCS#1 is wrapped into PKCS#8
+// so WebCrypto (available in the Worker runtime) can import it.
+function derLength(len: number): number[] {
+  if (len < 0x80) return [len];
+  const bytes: number[] = [];
+  while (len > 0) { bytes.unshift(len & 0xff); len >>= 8; }
+  return [0x80 | bytes.length, ...bytes];
+}
+
+function toPkcs8Der(raw: string): Uint8Array {
+  const text = raw.replace(/\\n/g, "\n").replace(/^["']|["']$/g, "").trim();
+  const isPkcs1 = /BEGIN RSA PRIVATE KEY/.test(text);
+  const body = text
+    .replace(/-----BEGIN [A-Z ]+-----/g, "")
+    .replace(/-----END [A-Z ]+-----/g, "")
+    .replace(/[^A-Za-z0-9+/=]/g, "");
+  let der = new Uint8Array(Buffer.from(body, "base64"));
+  if (der.length < 100) throw new Error("La clé privée Enable Banking est invalide ou incomplète.");
+  // Detect PKCS#1 even without header: SEQUENCE { INTEGER 0, INTEGER modulus... }
+  // PKCS#8 has SEQUENCE { INTEGER 0, SEQUENCE { OID ... } } -> byte after version is 0x30.
+  const looksPkcs1 = (() => {
+    let i = 1;
+    const l = der[i];
+    i += l & 0x80 ? 1 + (l & 0x7f) : 1;
+    return der[i] === 0x02 && der[i + 2] === 0x00 && der[i + 3] === 0x02;
+  })();
+  if (isPkcs1 || looksPkcs1) {
+    const algId = [0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00];
+    const octet = [0x04, ...derLength(der.length)];
+    const inner = [0x02, 0x01, 0x00, ...algId, ...octet];
+    const total = inner.length + der.length;
+    const out = new Uint8Array(1 + derLength(total).length + total);
+    out.set([0x30, ...derLength(total), ...inner], 0);
+    out.set(der, out.length - der.length);
+    der = out;
+  }
+  return der;
+}
+
+async function createAuthorizationToken({ applicationId, privateKey }: Credentials) {
+  const key = await crypto.subtle.importKey(
+    "pkcs8",
+    toPkcs8Der(privateKey),
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
   const now = Math.floor(Date.now() / 1000);
   const header = base64Url(JSON.stringify({ alg: "RS256", kid: applicationId, typ: "JWT" }));
   const payload = base64Url(
@@ -24,10 +67,8 @@ function createAuthorizationToken({ applicationId, privateKey }: Credentials) {
       jti: randomUUID(),
     }),
   );
-  const signer = createSign("RSA-SHA256");
-  signer.update(`${header}.${payload}`);
-  const signature = signer.sign(key, "base64url");
-  return `${header}.${payload}.${signature}`;
+  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(`${header}.${payload}`));
+  return `${header}.${payload}.${base64Url(Buffer.from(sig))}`;
 }
 
 export async function enableBankingRequest<T>(
