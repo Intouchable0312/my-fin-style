@@ -377,7 +377,7 @@ function BankPicker({ onBack }: { onBack: () => void }) {
       {err && <p className="px-5 pb-3 text-destructive">{err}</p>}
       {banks.isLoading && <p className="text-center text-muted-foreground">Chargement des banques…</p>}
       {banks.error && <p className="px-5 text-center text-destructive">{banks.error.message}</p>}
-      <div className="bg-card">{list.map((b) => <MenuRow key={b.name} icon={b.logo ? <img src={b.logo} alt="" className="h-7 w-7 object-contain" /> : <Landmark />} label={b.name} onClick={() => choose(b.name, b.country)} />)}</div>
+      <div className="bg-card">{list.map((b, i) => <MenuRow key={`${b.country}-${b.name}-${i}`} icon={b.logo ? <img src={b.logo} alt="" className="h-7 w-7 object-contain" /> : <Landmark />} label={b.name} onClick={() => choose(b.name, b.country)} />)}</div>
     </div>
   );
 }

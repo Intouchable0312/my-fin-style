@@ -90,6 +90,18 @@ export async function enableBankingRequest<T>(
   if (!response.ok) {
     const providerMessage = await response.text();
     console.error("Enable Banking request failed", response.status, providerMessage.slice(0, 500));
+    let code = "";
+    try {
+      code = String(JSON.parse(providerMessage)?.error ?? "");
+    } catch {
+      code = "";
+    }
+    if (code === "REDIRECT_URI_NOT_ALLOWED") {
+      throw new Error("L’adresse de retour de l’application n’est pas autorisée par Enable Banking. Ajoutez-la dans les réglages de votre application.");
+    }
+    if (response.status === 403 || code === "APPLICATION_NOT_ACTIVE" || code === "APPLICATION_INACTIVE") {
+      throw new Error("Votre application Enable Banking n’est pas encore activée. Activez-la en liant vos comptes.");
+    }
     throw new Error(response.status === 401 ? "La connexion Enable Banking doit être vérifiée." : "Le service bancaire est temporairement indisponible.");
   }
   return response.json() as Promise<T>;
