@@ -76,10 +76,23 @@ export const listFrenchBanks = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await ensureOwner(context.userId, context.supabase);
-    const response = await enableBankingRequest<{ aspsps?: Aspsp[] }>(readEnableBankingCredentials(), "/aspsps");
-    return (response.aspsps ?? [])
+    const creds = readEnableBankingCredentials();
+    const fr = await enableBankingRequest<{ aspsps?: Aspsp[] }>(creds, "/aspsps?country=FR");
+    let banks = fr.aspsps ?? [];
+    if (banks.length === 0) {
+      const all = await enableBankingRequest<{ aspsps?: Aspsp[] }>(creds, "/aspsps");
+      banks = all.aspsps ?? [];
+    }
+    const seen = new Set<string>();
+    return banks
       .filter((bank) => bank.psu_types?.includes("personal") !== false)
-      .sort((a, b) => (a.country === "FR" ? 0 : 1) - (b.country === "FR" ? 0 : 1) || a.name.localeCompare(b.name));
+      .filter((bank) => {
+        const k = `${bank.country}-${bank.name}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .sort((a, b) => (a.country === "FR" ? 0 : 1) - (b.country === "FR" ? 0 : 1) || a.name.localeCompare(b.name, "fr"));
   });
 
 export const startBankAuthorization = createServerFn({ method: "POST" })
