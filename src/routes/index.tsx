@@ -5,7 +5,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleHelp,
-  Contactless,
   CreditCard,
   Gift,
   Home,
@@ -182,7 +181,7 @@ function Offer({ badge, unit, category, title, note }: { badge: string; unit: st
 }
 
 function AccountScreen({ onMessages, onPin, onFreeze }: { onMessages: () => void; onPin: () => void; onFreeze: () => void }) {
-  return <div className="min-h-full bg-card"><PageHeader title="Compte" subtitle="Carte se terminant par - 21001" onMessages={onMessages} /><SectionLabel>Votre compte</SectionLabel><MenuRow icon={<Contactless />} label="Apple Pay" /><MenuRow icon={<CreditCard />} label="Activer et ajouter une carte" /><MenuRow icon={<UserRoundPlus />} label="Demander une Carte supplémentaire" /><MenuRow icon={<CreditCard />} label="Gérer votre code confidentiel" onClick={onPin} /><MenuRow icon={<LockKeyhole />} label="Bloquer temporairement une carte" onClick={onFreeze} /><MenuRow icon={<WalletCards />} label="Remplacer une Carte" /><SectionLabel>Vos réglages et préférences</SectionLabel><MenuRow icon={<UserRound />} label="Connexion via Face ID" /><MenuRow icon={<ShieldCheck />} label="Vérification en deux étapes" /><MenuRow icon={<Bell />} label="Notifications" onClick={onMessages} /></div>;
+  return <div className="min-h-full bg-card"><PageHeader title="Compte" subtitle="Carte se terminant par - 21001" onMessages={onMessages} /><SectionLabel>Votre compte</SectionLabel><MenuRow icon={<CreditCard />} label="Apple Pay" /><MenuRow icon={<CreditCard />} label="Activer et ajouter une carte" /><MenuRow icon={<UserRoundPlus />} label="Demander une Carte supplémentaire" /><MenuRow icon={<CreditCard />} label="Gérer votre code confidentiel" onClick={onPin} /><MenuRow icon={<LockKeyhole />} label="Bloquer temporairement une carte" onClick={onFreeze} /><MenuRow icon={<WalletCards />} label="Remplacer une Carte" /><SectionLabel>Vos réglages et préférences</SectionLabel><MenuRow icon={<UserRound />} label="Connexion via Face ID" /><MenuRow icon={<ShieldCheck />} label="Vérification en deux étapes" /><MenuRow icon={<Bell />} label="Notifications" onClick={onMessages} /></div>;
 }
 
 function SectionLabel({ children }: { children: ReactNode }) { return <h2 className="border-y border-border bg-muted px-5 py-3 text-[18px] font-semibold text-muted-foreground">{children}</h2>; }
