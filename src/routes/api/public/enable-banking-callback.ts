@@ -6,13 +6,12 @@ type SessionResponse = {
   session_id: string;
   valid_until?: string;
   accounts?: Array<{
-    account_id: string;
-    uid?: string;
+    uid: string;
+    account_id?: { iban?: string; other?: { identification?: string } } | null;
     name?: string;
     product?: string;
     currency?: string;
     cash_account_type?: string;
-    iban?: string;
   }>;
 };
 
@@ -54,7 +53,7 @@ export const Route = createFileRoute("/api/public/enable-banking-callback")({
               aspsp_country: pending.aspsp_country,
               valid_until: session.valid_until ?? null,
               status: "active",
-              active_account_uid: session.accounts?.[0]?.account_id ?? null,
+              active_account_uid: session.accounts?.[0]?.uid ?? null,
               updated_at: new Date().toISOString(),
             }, { onConflict: "user_id" })
             .select("id")
@@ -65,13 +64,13 @@ export const Route = createFileRoute("/api/public/enable-banking-callback")({
             const rows = session.accounts.map((account) => ({
               user_id: pending.user_id,
               connection_id: connection.id,
-              external_uid: account.account_id,
+              external_uid: account.uid,
               name: account.name ?? null,
               product: account.product ?? null,
               currency: account.currency ?? "EUR",
-              iban_last4: account.iban ? account.iban.replace(/\s/g, "").slice(-4) : null,
+              iban_last4: account.account_id?.iban ? account.account_id.iban.replace(/\s/g, "").slice(-4) : null,
               account_type: account.cash_account_type ?? null,
-              metadata: { provider_uid: account.uid ?? null },
+              metadata: {},
               updated_at: new Date().toISOString(),
             }));
             const { error: accountError } = await supabaseAdmin.from("bank_accounts").upsert(rows, { onConflict: "user_id,external_uid" });
