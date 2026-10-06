@@ -1,9 +1,13 @@
-export default function CreditCard() {
+// Source unique de la carte : remplacez public/ma-carte.png par votre PNG final
+// (même nom de fichier) et toute l'application affichera la nouvelle carte.
+export function BankCard() {
   return (
     <img
       src="/ma-carte.png"
-      alt="Carte de crédit"
-      style={{ width: "100%", maxWidth: 400, height: "auto", borderRadius: 16 }}
+      alt="Carte bancaire"
+      className="block w-full rounded-[10px] shadow-md"
     />
   );
 }
+
+export default BankCard;
