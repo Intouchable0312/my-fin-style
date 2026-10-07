@@ -16,18 +16,18 @@ import {
   UserRound,
   WalletCards,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { AppButton } from "@/components/AppButton";
 import { BankCard } from "@/components/BankCard";
-import { supabase } from "@/integrations/supabase/client";
+import { getDeviceToken, forgetDeviceToken } from "@/lib/device-access";
 import {
-  disconnectBank,
-  getBankingOverview,
-  listFrenchBanks,
-  selectBankAccount,
-  startBankAuthorization,
-} from "@/lib/banking.functions";
+  disconnectDeviceBank as disconnectBank,
+  getDeviceOverview as getBankingOverview,
+  listDeviceBanks as listFrenchBanks,
+  selectDeviceAccount as selectBankAccount,
+  startDeviceAuthorization as startBankAuthorization,
+} from "@/lib/device-banking.functions";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
@@ -83,8 +83,9 @@ function BankingApp() {
   const [tab, setTab] = useState<Tab>("home");
   const [detail, setDetail] = useState<Detail>(null);
   const fetchOverview = useServerFn(getBankingOverview);
-  const overview = useQuery({ queryKey: ["banking"], queryFn: () => fetchOverview(), retry: false });
-  const status = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("bank") : null;
+  const overview = useQuery({ queryKey: ["banking"], queryFn: () => fetchOverview({ data: { token: getDeviceToken() } }), retry: false });
+  const [status, setStatus] = useState<string | null>(null);
+  useEffect(() => { setStatus(new URLSearchParams(window.location.search).get("bank")); }, []);
 
   const goTab = (next: Tab) => {
     setTab(next);
@@ -95,6 +96,7 @@ function BankingApp() {
   if (overview.isLoading) content = <CenteredNote>Chargement de vos données bancaires…</CenteredNote>;
   else if (overview.error) content = <CenteredNote action={<AppButton onClick={() => overview.refetch()} className="mt-4 font-semibold text-primary">Réessayer</AppButton>}>{overview.error.message}</CenteredNote>;
   else if (!overview.data?.connection) content = <ConnectScreen status={status} onChoose={() => setDetail({ kind: "banks" })} />;
+  else if (overview.data.connection.status === "expired") content = <CenteredNote action={<AppButton onClick={() => setDetail({ kind: "banks" })} className="mt-4 font-semibold text-primary">Renouveler l’autorisation</AppButton>}>Votre autorisation bancaire a expiré.</CenteredNote>;
   else {
     const data = overview.data;
     content = (
@@ -290,14 +292,14 @@ function AccountScreen({ data, onReconnect }: { data: Overview; onReconnect: () 
       <PageHeader title="Compte" subtitle={accountSubtitle(data)} />
       <SectionLabel>Vos comptes</SectionLabel>
       {data.accounts.map((a) => (
-        <MenuRow key={a.id} icon={<WalletCards />} label={a.name ?? a.product ?? "Compte"} right={a.id === data.activeAccount?.id ? "Affiché" : a.iban_last4 ? `•• ${a.iban_last4}` : undefined} onClick={() => !busy && run(() => select({ data: { accountId: a.id } }))} />
+        <MenuRow key={a.id} icon={<WalletCards />} label={a.name ?? a.product ?? "Compte"} right={a.id === data.activeAccount?.id ? "Affiché" : a.iban_last4 ? `•• ${a.iban_last4}` : undefined} onClick={() => !busy && run(() => select({ data: { token: getDeviceToken(), accountId: a.id } }))} />
       ))}
       <SectionLabel>Votre banque</SectionLabel>
       <MenuRow icon={<Building2 />} label={data.connection?.aspsp_name ?? "Banque"} right={data.connection?.valid_until ? `Jusqu’au ${new Date(data.connection.valid_until).toLocaleDateString("fr-FR")}` : undefined} onClick={onReconnect} />
       <MenuRow icon={<RefreshCw />} label="Renouveler l’autorisation" onClick={onReconnect} />
-      <MenuRow icon={<Unplug />} label="Déconnecter la banque" onClick={() => !busy && confirm("Déconnecter votre banque ?") && run(() => disconnect())} />
+      <MenuRow icon={<Unplug />} label="Déconnecter la banque" onClick={() => !busy && confirm("Déconnecter votre banque ?") && run(() => disconnect({ data: { token: getDeviceToken() } }))} />
       <SectionLabel>Session</SectionLabel>
-      <MenuRow icon={<LogOut />} label="Se déconnecter" onClick={async () => { await supabase.auth.signOut(); qc.clear(); navigate({ to: "/auth" }); }} />
+      <MenuRow icon={<LogOut />} label="Oublier cet appareil" onClick={() => !busy && confirm("Oublier cet appareil et déconnecter la banque ?") && run(async () => { await disconnect({ data: { token: getDeviceToken() } }); forgetDeviceToken(); qc.clear(); await navigate({ to: "/" }); })} />
     </div>
   );
 }
@@ -365,7 +367,7 @@ function BankPicker({ onBack }: { onBack: () => void }) {
   const choose = async (name: string, country: string) => {
     setErr(null);
     try {
-      const { url } = await start({ data: { name, country, redirectUrl: `${window.location.origin}/api/public/enable-banking-callback` } });
+      const { url } = await start({ data: { token: getDeviceToken(), name, country, redirectUrl: `${window.location.origin}/api/public/enable-banking-callback` } });
       window.location.href = url;
     } catch (e) { setErr(e instanceof Error ? e.message : "Erreur"); }
   };

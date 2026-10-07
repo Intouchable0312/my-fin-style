@@ -63,6 +63,8 @@
 }
 
 :root {
+  --splash-background: #016fd0;
+  --splash-logo: oklch(1 0 0);
   --radius: 0.5rem;
   --background: oklch(0.968 0.002 240);
   --foreground: oklch(0.09 0 0);
@@ -162,6 +164,33 @@
   box-shadow: inset 0 0 0 2px color-mix(in oklab, white 22%, transparent);
   color: oklch(0.16 0.02 75);
   padding: 12px 14px;
+}
+
+.bank-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  background: var(--splash-background);
+  animation: splash-exit 350ms ease 2250ms forwards;
+}
+.bank-splash-logo { width: min(68vw, 320px); height: auto; overflow: visible; }
+.bank-splash-logo path {
+  stroke: var(--splash-logo);
+  stroke-width: 2;
+  fill: var(--splash-logo);
+  fill-opacity: 0;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: logo-trace 1600ms ease-in-out 100ms forwards, logo-fill 550ms ease 1350ms forwards;
+}
+@keyframes logo-trace { to { stroke-dashoffset: 0; } }
+@keyframes logo-fill { to { fill-opacity: 1; } }
+@keyframes splash-exit { to { opacity: 0; visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) {
+  .bank-splash { animation: none; }
+  .bank-splash-logo path { animation: none; fill-opacity: 1; stroke-dashoffset: 0; }
 }
 
 .bank-card::after {

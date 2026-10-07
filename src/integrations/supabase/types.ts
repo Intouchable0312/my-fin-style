@@ -85,6 +85,62 @@ export type Database = {
           },
         ]
       }
+      bank_device_authorizations: {
+        Row: {
+          aspsp_country: string
+          aspsp_name: string
+          consumed_at: string | null
+          expires_at: string
+          state: string
+          token_hash: string
+        }
+        Insert: {
+          aspsp_country: string
+          aspsp_name: string
+          consumed_at?: string | null
+          expires_at: string
+          state: string
+          token_hash: string
+        }
+        Update: {
+          aspsp_country?: string
+          aspsp_name?: string
+          consumed_at?: string | null
+          expires_at?: string
+          state?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_device_authorizations_token_hash_fkey"
+            columns: ["token_hash"]
+            isOneToOne: false
+            referencedRelation: "bank_device_connections"
+            referencedColumns: ["token_hash"]
+          },
+        ]
+      }
+      bank_device_connections: {
+        Row: {
+          accounts: Json
+          connection: Json | null
+          created_at: string
+          token_hash: string
+        }
+        Insert: {
+          accounts?: Json
+          connection?: Json | null
+          created_at?: string
+          token_hash: string
+        }
+        Update: {
+          accounts?: Json
+          connection?: Json | null
+          created_at?: string
+          token_hash?: string
+        }
+        Relationships: []
+      }
       banking_authorizations: {
         Row: {
           aspsp_country: string

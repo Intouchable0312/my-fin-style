@@ -29,6 +29,24 @@ export const Route = createFileRoute("/api/public/enable-banking-callback")({
         }
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { data: devicePending } = await supabaseAdmin.from("bank_device_authorizations")
+          .update({ consumed_at: new Date().toISOString() })
+          .eq("state", state).is("consumed_at", null).gt("expires_at", new Date().toISOString())
+          .select("token_hash, aspsp_name, aspsp_country").maybeSingle();
+        if (devicePending) {
+          try {
+            const session = await enableBankingRequest<SessionResponse>(readEnableBankingCredentials(), "/sessions", { method: "POST", body: JSON.stringify({ code }) });
+            const id = crypto.randomUUID();
+            const connection = { id, aspsp_name: devicePending.aspsp_name, aspsp_country: devicePending.aspsp_country, valid_until: session.valid_until ?? null, status: "active", active_account_uid: session.accounts?.[0]?.uid ?? null };
+            const accounts = (session.accounts ?? []).map(a => ({ id: crypto.randomUUID(), external_uid: a.uid, name: a.name ?? null, product: a.product ?? null, currency: a.currency ?? "EUR", iban_last4: a.account_id?.iban?.replace(/\s/g, "").slice(-4) ?? null, account_type: a.cash_account_type ?? null }));
+            const { data: saved, error } = await supabaseAdmin.from("bank_device_connections").update({ connection, accounts }).eq("token_hash", devicePending.token_hash).select("token_hash").maybeSingle();
+            if (error || !saved) throw new Error("Device connection write failed");
+            destination.searchParams.set("bank", "connected");
+          } catch {
+            destination.searchParams.set("bank", "error");
+          }
+          return Response.redirect(destination, 303);
+        }
         const { data: pending } = await supabaseAdmin
           .from("banking_authorizations")
           .select("state, user_id, aspsp_name, aspsp_country, expires_at, consumed_at")
