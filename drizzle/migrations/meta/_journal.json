@@ -8,6 +8,13 @@
       "when": 1791224907690,
       "tag": "0000_create_private_banking_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791407540645,
+      "tag": "0001_private_device_banking_access",
+      "breakpoints": true
     }
   ]
 }
