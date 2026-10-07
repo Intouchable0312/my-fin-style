@@ -16,7 +16,7 @@ import {
   UserRound,
   WalletCards,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { AppButton } from "@/components/AppButton";
 import { BankCard } from "@/components/BankCard";
@@ -84,7 +84,8 @@ function BankingApp() {
   const [detail, setDetail] = useState<Detail>(null);
   const fetchOverview = useServerFn(getBankingOverview);
   const overview = useQuery({ queryKey: ["banking"], queryFn: () => fetchOverview({ data: { token: getDeviceToken() } }), retry: false });
-  const status = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("bank") : null;
+  const [status, setStatus] = useState<string | null>(null);
+  useEffect(() => { setStatus(new URLSearchParams(window.location.search).get("bank")); }, []);
 
   const goTab = (next: Tab) => {
     setTab(next);
@@ -95,6 +96,7 @@ function BankingApp() {
   if (overview.isLoading) content = <CenteredNote>Chargement de vos données bancaires…</CenteredNote>;
   else if (overview.error) content = <CenteredNote action={<AppButton onClick={() => overview.refetch()} className="mt-4 font-semibold text-primary">Réessayer</AppButton>}>{overview.error.message}</CenteredNote>;
   else if (!overview.data?.connection) content = <ConnectScreen status={status} onChoose={() => setDetail({ kind: "banks" })} />;
+  else if (overview.data.connection.status === "expired") content = <CenteredNote action={<AppButton onClick={() => setDetail({ kind: "banks" })} className="mt-4 font-semibold text-primary">Renouveler l’autorisation</AppButton>}>Votre autorisation bancaire a expiré.</CenteredNote>;
   else {
     const data = overview.data;
     content = (
