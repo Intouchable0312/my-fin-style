@@ -1,5 +1,8 @@
 # Roadmap
 
+- [ ] Prepare Vercel deployment configuration and independent database setup instructions.
+- [ ] Configure independent database and Vercel secrets — requires the user’s external accounts.
+
 - [x] Replace app login with secure device-based bank authorization and localStorage persistence.
 - [x] Animate supplied vector logo on exact blue splash every reload; update favicon and verify.
 - [ ] Complete first real bank authorization on this device — requires the user’s confirmation on their bank’s site.
