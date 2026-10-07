@@ -1,5 +1,8 @@
 # Roadmap
 
+- [ ] Replace app login with secure device-based bank authorization and localStorage persistence.
+- [ ] Animate supplied vector logo on exact blue splash every reload; update favicon and verify.
+
 - [ ] Remove every fictitious financial, rewards, offer, account, and transaction value.
 - [ ] Add secure user authentication and user-owned banking connection storage.
 - [ ] Integrate Enable Banking authorization, callback, accounts, balances, and transactions.
