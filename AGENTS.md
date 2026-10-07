@@ -10,3 +10,5 @@
 <!-- LOVABLE:END -->
 
 - Keep all banking screens in the single mobile shell and reuse `BankCard` everywhere, because one future PNG replacement must update every card appearance.
+- Banking access uses a cryptographically random device capability persisted locally and hashed server-side in separate RLS-locked tables; no login or public access to existing owner data.
+- Render the reload splash once in the root document using paths extracted from the supplied vector; CSS animates the original geometry and respects reduced motion.
